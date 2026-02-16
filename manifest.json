@@ -1,0 +1,13 @@
+{
+    "id": "BetterMusicPacks",
+    "name": "BetterMusicPacks",
+    "author": "dylan",
+    "version": "1.0.0",
+    "description": "Shows music packs in a 5x5 grid with scrollbar.",
+    "gameVersion": "1.40.8",
+    "dependsOn": {
+        "BSIPA": "^4.0.0",
+        "BeatSaberMarkupLanguage": "^1.11.0"
+    },
+    "features": []
+}
