@@ -8,12 +8,12 @@ using BeatSaberMarkupLanguage.Settings;
 using IPALogger = IPA.Logging.Logger;
 using BetterMusicPacks.Configuration;
 
-namespace BetterMusicPacks
+namespace BetterMusicPacks;
+
+[Plugin(RuntimeOptions.SingleStartInit)]
+public class Plugin
 {
-    [Plugin(RuntimeOptions.SingleStartInit)]
-    public class Plugin
-    {
-        internal static IPALogger Log { get; private set; } = null!;
+    internal static IPALogger Log { get; private set; } = null!;
 
         private const string HarmonyId = "com.dylan.bettermusicpacks";
         private Harmony _harmony = null!;
@@ -33,9 +33,8 @@ namespace BetterMusicPacks
             _harmony.PatchAll(typeof(Plugin).Assembly);
             BeatSaberMarkupLanguage.Util.MainMenuAwaiter.MainMenuInitializing += () =>
             {
-                BSMLSettings.Instance.AddSettingsMenu("BetterMusicPacks", "BetterMusicPacks.Views.settings.bsml", PluginConfig.Instance);
+                BSMLSettings.Instance.AddSettingsMenu("BetterMusicPacks", "BetterMusicPacks.src.Resources.BSML.SettingsUI.bsml", PluginConfig.Instance);
             };
-            Log.Info("Loaded.");
         }
 
         [OnExit]
@@ -69,30 +68,23 @@ namespace BetterMusicPacks
             }
         }
 
-        private void PurgeMethod(MethodInfo? method)
-        {
-            if (method == null) return;
-            var info = Harmony.GetPatchInfo(method);
-            if (info == null) return;
+    private void PurgeMethod(MethodInfo? method)
+    {
+        if (method is null) return;
+        if (Harmony.GetPatchInfo(method) is not { } info) return;
 
-            foreach (var p in info.Prefixes)
-                if (p.owner != HarmonyId)
-                {
-                    Log.Info($"Purging {method.Name} from {p.owner}");
-                    _harmony.Unpatch(method, p.PatchMethod);
-                }
-            foreach (var p in info.Postfixes)
-                if (p.owner != HarmonyId)
-                {
-                    Log.Info($"Purging {method.Name} from {p.owner}");
-                    _harmony.Unpatch(method, p.PatchMethod);
-                }
-            foreach (var p in info.Transpilers)
-                if (p.owner != HarmonyId)
-                {
-                    Log.Info($"Purging {method.Name} from {p.owner}");
-                    _harmony.Unpatch(method, p.PatchMethod);
-                }
+        void UnpatchP(System.Collections.ObjectModel.ReadOnlyCollection<Patch> patches)
+        {
+            foreach (var p in patches)
+            {
+                if (p.owner == HarmonyId) continue;
+                Log.Info($"Purging {method.Name} from {p.owner}");
+                _harmony.Unpatch(method, p.PatchMethod);
+            }
         }
+
+        UnpatchP(info.Prefixes);
+        UnpatchP(info.Postfixes);
+        UnpatchP(info.Transpilers);
     }
 }

@@ -1,36 +1,30 @@
-using System.Reflection;
 using HarmonyLib;
-using HMUI;
 using Tweening;
 using UnityEngine;
-using UnityEngine.EventSystems;
 using BetterMusicPacks.Configuration;
 
-namespace BetterMusicPacks.Patches
+namespace BetterMusicPacks.Patches;
+
+[HarmonyPatch(typeof(GridView), "ReloadData")]
+internal static class GridView_ReloadData
 {
-    [HarmonyPatch(typeof(GridView), "ReloadData")]
-    internal static class GridView_ReloadData
+    static void Prefix(ref int ____columnCount, ref int ____visibleColumnCount)
     {
-        private static readonly FieldInfo _columnCount = AccessTools.Field(typeof(GridView), "_columnCount");
-        private static readonly FieldInfo _visibleColumnCount = AccessTools.Field(typeof(GridView), "_visibleColumnCount");
-
-        static void Prefix(GridView __instance)
-        {
-            if (!PluginConfig.Instance.Enabled) return;
-            _columnCount.SetValue(__instance, 5);
-            _visibleColumnCount.SetValue(__instance, 5);
-        }
-
-        static void Postfix(GridView __instance)
-        {
-            if (!PluginConfig.Instance.Enabled) return;
-            var gridView = __instance.GetComponentInParent<AnnotatedBeatmapLevelCollectionsGridView>();
-            if (gridView == null) return;
-
-            var pageControl = AccessTools.Field(typeof(AnnotatedBeatmapLevelCollectionsGridView), "_pageControl").GetValue(gridView) as PageControl;
-            if (pageControl != null) pageControl.gameObject.SetActive(false);
-        }
+        if (!PluginConfig.Instance.Enabled) return;
+        ____columnCount = 5;
+        ____visibleColumnCount = 5;
     }
+
+    static void Postfix(GridView __instance)
+    {
+        if (!PluginConfig.Instance.Enabled) return;
+        var gridView = __instance.GetComponentInParent<AnnotatedBeatmapLevelCollectionsGridView>();
+        if (gridView == null) return;
+
+        var pageControl = AccessTools.FieldRefAccess<AnnotatedBeatmapLevelCollectionsGridView, PageControl>("_pageControl")(gridView);
+        if (pageControl != null) pageControl.gameObject.SetActive(false);
+    }
+}
 
     [HarmonyPatch(typeof(AnnotatedBeatmapLevelCollectionsGridViewAnimator), "Init")]
     internal static class Animator_Init
@@ -59,13 +53,13 @@ namespace BetterMusicPacks.Patches
     [HarmonyPatch(typeof(AnnotatedBeatmapLevelCollectionsGridViewAnimator), "ScrollToRowIdxInstant")]
     internal static class Animator_ScrollToRowIdxInstant
     {
-        static bool Prefix(AnnotatedBeatmapLevelCollectionsGridViewAnimator __instance, int selectedColumn, int selectedRow, RectTransform ____contentTransform, float ____rowHeight, int ____rowCount)
+        static bool Prefix(AnnotatedBeatmapLevelCollectionsGridViewAnimator __instance, int selectedColumn, int selectedRow, RectTransform ____contentTransform, float ____rowHeight, int ____rowCount, ref int ____selectedColumn, ref int ____selectedRow)
         {
             if (!PluginConfig.Instance.Enabled) return true;
-            AccessTools.Field(typeof(AnnotatedBeatmapLevelCollectionsGridViewAnimator), "_selectedColumn").SetValue(__instance, selectedColumn);
-            AccessTools.Field(typeof(AnnotatedBeatmapLevelCollectionsGridViewAnimator), "_selectedRow").SetValue(__instance, selectedRow);
+            ____selectedColumn = selectedColumn;
+            ____selectedRow = selectedRow;
 
-            float yOffset = ((float)selectedRow - (float)(____rowCount - 1) * 0.5f) * ____rowHeight;
+            float yOffset = (selectedRow - (____rowCount - 1) * 0.5f) * ____rowHeight;
             ____contentTransform.anchoredPosition = new Vector2(0f, yOffset);
             return false;
         }
@@ -108,16 +102,16 @@ namespace BetterMusicPacks.Patches
             var sizeTween = Vector2Tween.Pool.Spawn(curVSize, tgtVSize, v => ____viewportTransform.sizeDelta = v, ____transitionDuration, ____easeType, 0f);
             sizeTween.onCompleted = () =>
             {
-                var t = ScrollbarUI.ViewportSizeTween.GetValue(__instance) as Vector2Tween;
-                if (t != null) { Vector2Tween.Pool.Despawn(t); ScrollbarUI.ViewportSizeTween.SetValue(__instance, null); }
+                var t = ScrollbarUI.ViewportSizeTween(__instance);
+                if (t != null) { Vector2Tween.Pool.Despawn(t); ScrollbarUI.ViewportSizeTween(__instance) = null; }
             };
             ____viewportSizeTween = sizeTween;
 
             var posTween = Vector2Tween.Pool.Spawn(curCPos, tgtCPos, v => ____contentTransform.anchoredPosition = v, ____transitionDuration, ____easeType, 0f);
             posTween.onCompleted = () =>
             {
-                var t = ScrollbarUI.ContentPositionTween.GetValue(__instance) as Vector2Tween;
-                if (t != null) { Vector2Tween.Pool.Despawn(t); ScrollbarUI.ContentPositionTween.SetValue(__instance, null); }
+                var t = ScrollbarUI.ContentPositionTween(__instance);
+                if (t != null) { Vector2Tween.Pool.Despawn(t); ScrollbarUI.ContentPositionTween(__instance) = null; }
             };
             ____contentPositionTween = posTween;
 
@@ -130,25 +124,25 @@ namespace BetterMusicPacks.Patches
     [HarmonyPatch(typeof(AnnotatedBeatmapLevelCollectionsGridViewAnimator), "AnimateClose")]
     internal static class Animator_AnimateClose
     {
-        static bool Prefix(AnnotatedBeatmapLevelCollectionsGridViewAnimator __instance, int selectedColumn, int selectedRow, ref bool animated, RectTransform ____viewportTransform, RectTransform ____contentTransform, float ____columnWidth, float ____rowHeight, int ____visibleColumnCount, float ____transitionDuration, EaseType ____easeType, TimeTweeningManager ____tweeningManager, ref Vector2Tween? ____viewportSizeTween, ref Vector2Tween? ____contentPositionTween)
+        static bool Prefix(AnnotatedBeatmapLevelCollectionsGridViewAnimator __instance, int selectedColumn, int selectedRow, ref bool animated, RectTransform ____viewportTransform, RectTransform ____contentTransform, float ____columnWidth, float ____rowHeight, int ____visibleColumnCount, float ____transitionDuration, EaseType ____easeType, TimeTweeningManager ____tweeningManager, ref Vector2Tween? ____viewportSizeTween, ref Vector2Tween? ____contentPositionTween, ref int ____selectedColumn, ref int ____selectedRow, ref int ____rowCount)
         {
             if (!PluginConfig.Instance.Enabled) return true;
             animated = false;
-            AccessTools.Field(typeof(AnnotatedBeatmapLevelCollectionsGridViewAnimator), "_selectedColumn").SetValue(__instance, selectedColumn);
-            AccessTools.Field(typeof(AnnotatedBeatmapLevelCollectionsGridViewAnimator), "_selectedRow").SetValue(__instance, selectedRow);
+            ____selectedColumn = selectedColumn;
+            ____selectedRow = selectedRow;
 
             ScrollbarUI.DespawnTween(ref ____viewportSizeTween);
             ScrollbarUI.DespawnTween(ref ____contentPositionTween);
-            ScrollbarUI.UpdateLayout(0, 0, 0, selectedRow, 0, false);
+            ScrollbarUI.UpdateLayout(0f, 0f, 0f, selectedRow, 0, false);
 
             ____viewportTransform.anchoredPosition = new Vector2(____viewportTransform.anchoredPosition.x, 0f);
 
             Vector2 curVSize = ____viewportTransform.sizeDelta;
             Vector2 curCPos  = ____contentTransform.anchoredPosition;
 
-            Vector2 tgtVSize = new Vector2((float)____visibleColumnCount * ____columnWidth, ____rowHeight);
-            int rowCount = (int)ScrollbarUI.RowCount.GetValue(__instance);
-            float yOffset = ((float)selectedRow - (float)(rowCount - 1) * 0.5f) * ____rowHeight;
+            Vector2 tgtVSize = new Vector2(____visibleColumnCount * ____columnWidth, ____rowHeight);
+            int rowCount = ____rowCount;
+            float yOffset = (selectedRow - (rowCount - 1) * 0.5f) * ____rowHeight;
             Vector2 tgtCPos = new Vector2(0f, yOffset);
 
             if (!animated || ____tweeningManager == null)
@@ -161,16 +155,16 @@ namespace BetterMusicPacks.Patches
             var sizeTween = Vector2Tween.Pool.Spawn(curVSize, tgtVSize, v => ____viewportTransform.sizeDelta = v, ____transitionDuration, ____easeType, 0f);
             sizeTween.onCompleted = () =>
             {
-                var t = ScrollbarUI.ViewportSizeTween.GetValue(__instance) as Vector2Tween;
-                if (t != null) { Vector2Tween.Pool.Despawn(t); ScrollbarUI.ViewportSizeTween.SetValue(__instance, null); }
+                var t = ScrollbarUI.ViewportSizeTween(__instance);
+                if (t != null) { Vector2Tween.Pool.Despawn(t); ScrollbarUI.ViewportSizeTween(__instance) = null; }
             };
             ____viewportSizeTween = sizeTween;
 
             var posTween = Vector2Tween.Pool.Spawn(curCPos, tgtCPos, v => ____contentTransform.anchoredPosition = v, ____transitionDuration, ____easeType, 0f);
             posTween.onCompleted = () =>
             {
-                var t = ScrollbarUI.ContentPositionTween.GetValue(__instance) as Vector2Tween;
-                if (t != null) { Vector2Tween.Pool.Despawn(t); ScrollbarUI.ContentPositionTween.SetValue(__instance, null); }
+                var t = ScrollbarUI.ContentPositionTween(__instance);
+                if (t != null) { Vector2Tween.Pool.Despawn(t); ScrollbarUI.ContentPositionTween(__instance) = null; }
             };
             ____contentPositionTween = posTween;
 
@@ -179,7 +173,6 @@ namespace BetterMusicPacks.Patches
             return false;
         }
     }
-
 
     [HarmonyPatch(typeof(AnnotatedBeatmapLevelCollectionsGridView), "OnPointerExit")]
     internal static class GridView_OnPointerExit
@@ -190,4 +183,3 @@ namespace BetterMusicPacks.Patches
             return !ScrollbarUI.IsVisible;
         }
     }
-}

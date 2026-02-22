@@ -1,7 +1,5 @@
 <settings-container>
-	<checkbox-setting apply-on-change="true" value="Enabled" text="Mod Enabled"
-					hover-hint="toggle functionality"
-					/>
+	<checkbox-setting apply-on-change="true" value="Enabled" text="Mod Enabled" hover-hint="toggle functionality"/>
 	<horizontal>
 		<text text='mod by youtube.com/dylanhook' align='Center' font-size='3'/>
 	</horizontal>

@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Reflection;
 using HarmonyLib;
 using HMUI;
@@ -7,11 +6,14 @@ using UnityEngine;
 using UnityEngine.UI;
 using VRUIControls;
 using BetterMusicPacks.Configuration;
+using UnityEngine.XR;
+using Tweening;
+using UnityEngine.EventSystems;
 
-namespace BetterMusicPacks.Patches
+namespace BetterMusicPacks.Patches;
+
+internal static class ScrollbarUI
 {
-    internal static class ScrollbarUI
-    {
         private const int MaxVisibleRows = 5;
         private const float ScrollbarGap = 4f;
         private const float ButtonSize = 4f;
@@ -34,18 +36,19 @@ namespace BetterMusicPacks.Patches
         private static bool _visible;
         public static bool IsVisible => _visible;
         internal static int ArrowClickFrame = -1;
+        internal static int HoverCount = 0;
 
-        public static readonly FieldInfo SelectedRow = AccessTools.Field(typeof(AnnotatedBeatmapLevelCollectionsGridViewAnimator), "_selectedRow");
-        public static readonly FieldInfo RowCount = AccessTools.Field(typeof(AnnotatedBeatmapLevelCollectionsGridViewAnimator), "_rowCount");
-        public static readonly FieldInfo RowHeight = AccessTools.Field(typeof(AnnotatedBeatmapLevelCollectionsGridViewAnimator), "_rowHeight");
-        public static readonly FieldInfo ContentTransform = AccessTools.Field(typeof(AnnotatedBeatmapLevelCollectionsGridViewAnimator), "_contentTransform");
-        public static readonly FieldInfo ViewportTransform = AccessTools.Field(typeof(AnnotatedBeatmapLevelCollectionsGridViewAnimator), "_viewportTransform");
-        public static readonly FieldInfo ViewportSizeTween = AccessTools.Field(typeof(AnnotatedBeatmapLevelCollectionsGridViewAnimator), "_viewportSizeTween");
-        public static readonly FieldInfo ContentPositionTween = AccessTools.Field(typeof(AnnotatedBeatmapLevelCollectionsGridViewAnimator), "_contentPositionTween");
+        public static readonly AccessTools.FieldRef<AnnotatedBeatmapLevelCollectionsGridViewAnimator, int> SelectedRow = AccessTools.FieldRefAccess<AnnotatedBeatmapLevelCollectionsGridViewAnimator, int>("_selectedRow");
+        public static readonly AccessTools.FieldRef<AnnotatedBeatmapLevelCollectionsGridViewAnimator, int> RowCount = AccessTools.FieldRefAccess<AnnotatedBeatmapLevelCollectionsGridViewAnimator, int>("_rowCount");
+        public static readonly AccessTools.FieldRef<AnnotatedBeatmapLevelCollectionsGridViewAnimator, float> RowHeight = AccessTools.FieldRefAccess<AnnotatedBeatmapLevelCollectionsGridViewAnimator, float>("_rowHeight");
+        public static readonly AccessTools.FieldRef<AnnotatedBeatmapLevelCollectionsGridViewAnimator, RectTransform> ContentTransform = AccessTools.FieldRefAccess<AnnotatedBeatmapLevelCollectionsGridViewAnimator, RectTransform>("_contentTransform");
+        public static readonly AccessTools.FieldRef<AnnotatedBeatmapLevelCollectionsGridViewAnimator, RectTransform> ViewportTransform = AccessTools.FieldRefAccess<AnnotatedBeatmapLevelCollectionsGridViewAnimator, RectTransform>("_viewportTransform");
+        public static readonly AccessTools.FieldRef<AnnotatedBeatmapLevelCollectionsGridViewAnimator, Vector2Tween?> ViewportSizeTween = AccessTools.FieldRefAccess<AnnotatedBeatmapLevelCollectionsGridViewAnimator, Vector2Tween?>("_viewportSizeTween");
+        public static readonly AccessTools.FieldRef<AnnotatedBeatmapLevelCollectionsGridViewAnimator, Vector2Tween?> ContentPositionTween = AccessTools.FieldRefAccess<AnnotatedBeatmapLevelCollectionsGridViewAnimator, Vector2Tween?>("_contentPositionTween");
 
-        private static readonly FieldInfo SV_PageUpButton = AccessTools.Field(typeof(ScrollView), "_pageUpButton");
-        private static readonly FieldInfo SV_PageDownButton = AccessTools.Field(typeof(ScrollView), "_pageDownButton");
-        private static readonly FieldInfo VRGraphicRaycaster_PhysicsRaycaster = AccessTools.Field(typeof(VRGraphicRaycaster), "_physicsRaycaster");
+        private static readonly AccessTools.FieldRef<ScrollView, Button> SV_PageUpButton = AccessTools.FieldRefAccess<ScrollView, Button>("_pageUpButton");
+        private static readonly AccessTools.FieldRef<ScrollView, Button> SV_PageDownButton = AccessTools.FieldRefAccess<ScrollView, Button>("_pageDownButton");
+        private static readonly AccessTools.FieldRef<VRGraphicRaycaster, VRUIControls.PhysicsRaycasterWithCache> VRGraphicRaycaster_PhysicsRaycaster = AccessTools.FieldRefAccess<VRGraphicRaycaster, VRUIControls.PhysicsRaycasterWithCache>("_physicsRaycaster");
         private static readonly MethodInfo? CloseLevelCollectionMethod = AccessTools.Method(typeof(AnnotatedBeatmapLevelCollectionsGridView), "CloseLevelCollection", new[] { typeof(bool) });
 
         public static void Reset()
@@ -189,14 +192,14 @@ namespace BetterMusicPacks.Patches
         public static void ScrollBy(int rowDelta)
         {
             if (_animator == null || !PluginConfig.Instance.Enabled) return;
-            int currentRow = (int)SelectedRow.GetValue(_animator);
-            int rowCount   = (int)RowCount.GetValue(_animator);
-            float rowHeight = (float)RowHeight.GetValue(_animator);
-            var contentRT   = (RectTransform)ContentTransform.GetValue(_animator);
-            var viewportRT  = (RectTransform)ViewportTransform.GetValue(_animator);
+            int currentRow = SelectedRow(_animator);
+            int rowCount   = RowCount(_animator);
+            float rowHeight = RowHeight(_animator);
+            var contentRT   = ContentTransform(_animator);
+            var viewportRT  = ViewportTransform(_animator);
 
             int targetRow = Mathf.Clamp(currentRow + rowDelta, 0, rowCount - 1);
-            SelectedRow.SetValue(_animator, targetRow);
+            SelectedRow(_animator) = targetRow;
 
             float clampedRow = (rowCount > MaxVisibleRows) ? Mathf.Clamp(targetRow, 2, rowCount - 3) : (rowCount - 1) * 0.5f;
             contentRT.anchoredPosition = new Vector2(0f, (clampedRow - (rowCount - 1) * 0.5f) * rowHeight);
@@ -220,6 +223,7 @@ namespace BetterMusicPacks.Patches
             img.color = new Color(0, 0, 0, 0);
             img.raycastTarget = true;
             foreach (var g in _scrollbarObj.GetComponentsInChildren<Graphic>(true)) g.raycastTarget = true;
+            _scrollbarObj.AddComponent<UIHoverWatcher>();
             _scrollbarObj.SetActive(false);
         }
 
@@ -228,8 +232,8 @@ namespace BetterMusicPacks.Patches
             Button? upDonor = null;
             foreach (var sv in Resources.FindObjectsOfTypeAll<ScrollView>())
             {
-                var up = SV_PageUpButton.GetValue(sv) as Button;
-                var down = SV_PageDownButton.GetValue(sv) as Button;
+                var up = SV_PageUpButton(sv);
+                var down = SV_PageDownButton(sv);
                 if (up != null && down != null) { upDonor = up; break; }
             }
             if (upDonor == null) return;
@@ -302,6 +306,8 @@ namespace BetterMusicPacks.Patches
             cg.interactable = true;
             cg.blocksRaycasts = true;
 
+            go.AddComponent<UIHoverWatcher>();
+
             return go;
         }
 
@@ -316,11 +322,12 @@ namespace BetterMusicPacks.Patches
             img.color = new Color(0, 0, 0, 0);
             img.raycastTarget = true;
 
+            _hoverGuardObj.AddComponent<UIHoverWatcher>();
+
             _hoverGuardRT = _hoverGuardObj.GetComponent<RectTransform>();
             _hoverGuardRT.anchorMin = _hoverGuardRT.anchorMax = _hoverGuardRT.pivot = new Vector2(0.5f, 0.5f);
             _hoverGuardObj.SetActive(false);
         }
-
 
         private static Transform? FindViewController(Transform from)
         {
@@ -336,8 +343,8 @@ namespace BetterMusicPacks.Patches
                 foreach (var donor in Resources.FindObjectsOfTypeAll<VRGraphicRaycaster>())
                 {
                     if (donor == target) continue;
-                    var pr = VRGraphicRaycaster_PhysicsRaycaster.GetValue(donor);
-                    if (pr != null) { VRGraphicRaycaster_PhysicsRaycaster.SetValue(target, pr); return; }
+                    var pr = VRGraphicRaycaster_PhysicsRaycaster(donor);
+                    if (pr != null) { VRGraphicRaycaster_PhysicsRaycaster(target) = pr; return; }
                 }
             }
             catch {}
@@ -360,6 +367,7 @@ namespace BetterMusicPacks.Patches
             _gridView = null;
             _visible = false;
             ArrowClickFrame = -1;
+            HoverCount = 0;
             _scrollbarObj = null; _indicator = null; _scrollbarRT = null;
             _upBtnObj = null; _downBtnObj = null;
             _upBtnRT = null; _downBtnRT = null;
@@ -369,9 +377,9 @@ namespace BetterMusicPacks.Patches
         public static void CloseGrid()
         {
             if (_gridView == null || !_visible) return;
-            try 
-            { 
-                CloseLevelCollectionMethod?.Invoke(_gridView, new object[] { false }); 
+            try
+            {
+                CloseLevelCollectionMethod?.Invoke(_gridView, new object[] { false });
             }
             catch {}
         }
@@ -384,14 +392,43 @@ namespace BetterMusicPacks.Patches
 
     public class GridClickWatcher : MonoBehaviour
     {
+        private bool _wasLeftTrigger;
+        private bool _wasRightTrigger;
+
         private void LateUpdate()
         {
             if (!ScrollbarUI.IsVisible || !PluginConfig.Instance.Enabled) return;
-            if (UnityEngine.Input.GetMouseButtonDown(0) || UnityEngine.Input.GetMouseButtonDown(1))
+
+            bool pcClicked = UnityEngine.Input.GetMouseButtonDown(0) || UnityEngine.Input.GetMouseButtonDown(1);
+
+            var leftDevice = InputDevices.GetDeviceAtXRNode(XRNode.LeftHand);
+            var rightDevice = InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
+
+            bool leftTrigger = false;
+            bool rightTrigger = false;
+
+            if (leftDevice.isValid) leftDevice.TryGetFeatureValue(CommonUsages.triggerButton, out leftTrigger);
+            if (rightDevice.isValid) rightDevice.TryGetFeatureValue(CommonUsages.triggerButton, out rightTrigger);
+
+            bool vrClicked = (leftTrigger && !_wasLeftTrigger) || (rightTrigger && !_wasRightTrigger);
+
+            _wasLeftTrigger = leftTrigger;
+            _wasRightTrigger = rightTrigger;
+
+            if (pcClicked || vrClicked)
             {
                 if (Time.frameCount == ScrollbarUI.ArrowClickFrame) return;
+                if (ScrollbarUI.HoverCount > 0) return;
                 ScrollbarUI.CloseGrid();
             }
         }
     }
-}
+
+    public class UIHoverWatcher : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+    {
+        private bool _isHovered;
+        public void OnPointerEnter(PointerEventData eventData) { if (!_isHovered) { _isHovered = true; ScrollbarUI.HoverCount++; } }
+        public void OnPointerExit(PointerEventData eventData) { if (_isHovered) { _isHovered = false; ScrollbarUI.HoverCount--; } }
+        private void OnDisable() { if (_isHovered) { _isHovered = false; ScrollbarUI.HoverCount--; } }
+        private void OnDestroy() { if (_isHovered) { _isHovered = false; ScrollbarUI.HoverCount--; } }
+    }
